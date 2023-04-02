@@ -50,7 +50,7 @@ class CLIPModel(nn.Module):
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
-    def forward(self, text, image):
+    def forward(self, text: torch.Tensor, image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         text = self.text_encoder(text)
         image = self.image_encoder(image)
 
@@ -59,7 +59,6 @@ class CLIPModel(nn.Module):
 
         # this serves as a temperature parameter
         logit_scale = self.logit_scale.exp()
-
         # we calculate the logits by taking the dot product between the image and text features
         # this achieves the same thing as the cosine similarity
         # we also scale the logits by a factor of 1 / temperature
@@ -73,14 +72,29 @@ class CLIPModel(nn.Module):
 
         return logits_per_text, logits_per_image
 
+
 class CLIP(pl.LightningModule):
     def __init__(self, num_heads, num_layers, max_len, vocab_size, embedding_dim, feed_forward_dim, dropout):
+        """
+        Defines the CLIP model architecture, a model that takes in an image and text and outputs the similarity between the two.
+        It uses a transformer encoder for the text and a resnet50 for the image encoder. For a batch of N samples, 
+        the model is then trained  to maximize similarity between matching samples of (text, image) data 
+        while minimizing similarity between other the N^2 - N pairs of (text, image) data.
+
+        :ivar: num_heads: the number of heads in the multi-head attention layer
+        :ivar: num_layers: the number of layers in the transformer encoder
+        :ivar: max_len: the maximum length of the text, also known as the context_length in the transformer encoder
+        :ivar: vocab_size: the size of the tokenizer vocabulary
+        :ivar: embedding_dim: the dimension of the embedding layer, which such that batches will have shape (batch_size, embedding_dim)
+        :ivar: feed_forward_dim: the dimension of the feed forward layer in the transformer encoder
+        :ivar: dropout: the dropout rate
+        """
         super().__init__()
         self.model = CLIPModel(num_heads, num_layers, max_len, vocab_size, embedding_dim, feed_forward_dim, dropout)
         self.image_loss = torch.nn.CrossEntropyLoss()
         self.text_loss = torch.nn.CrossEntropyLoss()
 
-    def __step(self, batch):
+    def __step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         image, text = batch
         logits_per_text, logits_per_image = self.model(text, image)
 
@@ -92,21 +106,21 @@ class CLIP(pl.LightningModule):
         # so for the ith image, we want the ith text to be the same as the image
         # otherwise, we want the text to be different from the image
         # So the labels for the ith image are [0, 1, 2, ..., i - 1, i + 1, ..., batch_size - 1]
-        image_loss = self.image_loss(logits_per_image, torch.arange(logits_per_image.shape[0]))
-        text_loss = self.text_loss(logits_per_text, torch.arange(logits_per_text.shape[0]))
+        image_loss = self.image_loss(logits_per_image, torch.arange(logits_per_image.shape[0]).to(logits_per_image.device))
+        text_loss = self.text_loss(logits_per_text, torch.arange(logits_per_text.shape[0]).to(logits_per_text.device))
 
         loss = (image_loss + text_loss) / 2
         return loss
     
     def training_step(self, batch, batch_idx):
         loss = self.__step(batch)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
     
     def validation_step(self, batch, batch_idx):
         loss = self.__step(batch)
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
     
     def configure_optimizers(self):
