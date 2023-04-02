@@ -1,31 +1,28 @@
 import argparse
 import os
 
-import numpy as np
-import pytorch_lightning as pl
 import ray.train
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from datasets import load_dataset
-from pytorch_lightning.loggers import WandbLogger
 from ray.air import session
-from ray.air.integrations.wandb import WandbLoggerCallback, setup_wandb
-from ray.data.preprocessors import Concatenator
 from ray.train.torch import TorchTrainer
-from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import AutoTokenizer
-
+from ray.air import ScalingConfig
 import wandb
 from lightning_module import CLIPModel
 from pairdataset import PokemonClipDataset
+from torch.utils.data import random_split
+import ray.data
+import ray.train.torch
+from torch.utils.data import DataLoader
 
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
-
-def calculate_loss(batch: tuple, model: nn.Module, text_criterion: nn.Module, image_criterion: nn.Module):
+def calculate_loss(batch: tuple[torch.Tensor, torch.Tensor], model: nn.Module, text_criterion: nn.Module, image_criterion: nn.Module):
     image, text = batch
-    text_logits, image_logits = model(image, text)
+    image_logits, text_logits = model(text, image)
     text_loss = text_criterion(text_logits, torch.arange(text_logits.shape[0]).to(text_logits.device))
     image_loss = image_criterion(image_logits, torch.arange(image_logits.shape[0]).to(image_logits.device))
     loss = (text_loss + image_loss) / 2
@@ -36,38 +33,36 @@ def calculate_loss(batch: tuple, model: nn.Module, text_criterion: nn.Module, im
 
 def clip_training_epoch(
     model: nn.Module,
-    dataset: ray.data.Dataset,
+    dataloader: DataLoader,
     optimizer: optim.Optimizer,
     text_criterion: nn.Module,
     image_criterion: nn.Module,
-    batch_size_per_workers: int,
 ):
     model.train()
     loss = 0
-    for batch in dataset.iter_torch_batches(batch_size=batch_size_per_workers):
+    for batch in dataloader:
         optimizer.zero_grad()
         loss = calculate_loss(batch, model, text_criterion, image_criterion)
         loss.backward()
         optimizer.step()
 
-    loss /= len(dataset)
+    loss /= len(dataloader)
     return loss
 
 
 def clip_test_epoch(
     model: nn.Module,
-    dataset: ray.data.Dataset,
+    dataloader: DataLoader,
     text_criterion: nn.Module,
     image_criterion: nn.Module,
-    batch_size_per_workers: int,
 ):
     model.eval()
     loss = 0
     with torch.no_grad():
-        for batch in dataset.iter_torch_batches(batch_size=batch_size_per_workers):
+        for batch in dataloader:
             loss = calculate_loss(batch, model, text_criterion, image_criterion)
 
-    loss /= len(dataset)
+    loss /= len(dataloader)
     return loss
 
 
@@ -76,11 +71,25 @@ def training_loop(config):
     lr = config["lr"]
     epochs = config["epochs"]
     model_params = config["model_params"]
+    train, val = config["train"], config["val"]
 
-    train_dataset = session.get_dataset_shard("train")
-    val_dataset = session.get_dataset_shard("val")
+    batch_size_per_workers = max(1, batch_size // session.get_world_size())
+    
+    train_dataset = DataLoader(
+        dataset=train,
+        batch_size=batch_size_per_workers,
+        shuffle=True,
+    )
+    val_dataset = DataLoader(
+        dataset=val,
+        batch_size=batch_size_per_workers,
+        shuffle=False,
+    )
+    train_dataset = ray.train.torch.prepare_data_loader(train_dataset)
+    train_dataset = ray.train.torch.prepare_data_loader(train_dataset)
 
-    batch_size_per_workers = batch_size // session.get_world_size()
+    print('Train dataset is of type: ', type(train_dataset))
+    print('Val dataset is of type: ', type(val_dataset))
 
     model = CLIPModel(
         num_heads=model_params["num_heads"],
@@ -100,28 +109,26 @@ def training_loop(config):
     for epoch in range(epochs):
         train_loss = clip_training_epoch(
             model=model,
-            dataset=train_dataset,
+            dataloader=train_dataset,
             optimizer=optimizer,
             text_criterion=text_criterion,
             image_criterion=image_criterion,
-            batch_size_per_workers=batch_size_per_workers,
         )
         val_loss = clip_test_epoch(
             model=model,
-            dataset=val_dataset,
+            dataloader=val_dataset,
             text_criterion=text_criterion,
             image_criterion=image_criterion,
-            batch_size_per_workers=batch_size_per_workers,
         )
         session.report({"train_loss_epoch": train_loss, "val_loss_epoch": val_loss})
         print(f"Epoch {epoch}: train loss: {train_loss}, val loss: {val_loss}")
 
 
 def main():
-    parser = argparse.ArgumentParser(help="Train CLIP model on Pokemon dataset.")
+    parser = argparse.ArgumentParser(description="Train CLIP model on Pokemon dataset.")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of heads in the multihead attention layer")
     parser.add_argument("--num_layers", type=int, default=12, help="Number of layers in the encoder")
-    parser.add_argument("--max_len", type=int, default=128, help="Maximum length of the text")
+    parser.add_argument("--max_len", type=int, default=16, help="Maximum length of the text")
     parser.add_argument("--embedding_dim", type=int, default=32, help="Embedding dimension of the text")
     parser.add_argument("--feed_forward_dim", type=int, default=16, help="Feed forward dimension of the text")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
@@ -141,11 +148,8 @@ def main():
     train, val = random_split(images, [train_size, val_size])
     images = {"train": train, "test": val}
 
-    traindata = PokemonClipDataset(images["train"], context_length=args.max_len, tokenizer=tokenizer)
-    valdata = PokemonClipDataset(images["test"], context_length=args.max_len, tokenizer=tokenizer)
-
-    traindata = ray.data.from_torch(traindata)
-    valdata = ray.data.from_torch(valdata)
+    train = PokemonClipDataset(images["train"], context_length=args.max_len, tokenizer=tokenizer)
+    val = PokemonClipDataset(images["test"], context_length=args.max_len, tokenizer=tokenizer)
 
     config = {
         "batch_size": args.batch_size,
@@ -160,10 +164,11 @@ def main():
             "feed_forward_dim": args.feed_forward_dim,
             "dropout": args.dropout,
         },
-        "train_dataset": traindata,
-        "val_dataset": valdata,
+        "train": train,
+        "val": val,
     }
-
+    trainer = TorchTrainer(train_loop_per_worker=training_loop, train_loop_config=config, scaling_config=ScalingConfig(num_workers=2))
+    trainer.fit()
 
 if __name__ == "__main__":
     main()

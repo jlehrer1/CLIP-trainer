@@ -15,7 +15,7 @@ tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 if __name__ == "__main__":
     # take in command line arguments for hyperparameters
-    parser = argparse.ArgumentParser(help="Train CLIP model on Pokemon dataset.")
+    parser = argparse.ArgumentParser(description="Train CLIP model on Pokemon dataset.")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of heads in the multihead attention layer")
     parser.add_argument("--num_layers", type=int, default=12, help="Number of layers in the encoder")
     parser.add_argument("--max_len", type=int, default=128, help="Maximum length of the text")

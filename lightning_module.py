@@ -75,7 +75,7 @@ class CLIPModel(nn.Module):
         logits_per_text = logit_scale * text_features @ image_features.t()
         logits_per_image = logit_scale * image_features @ text_features.t()
 
-        return logits_per_text, logits_per_image
+        return logits_per_image, logits_per_text
 
 
 class CLIP(pl.LightningModule):
@@ -101,7 +101,7 @@ class CLIP(pl.LightningModule):
 
     def __step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         image, text = batch
-        logits_per_text, logits_per_image = self.model(text, image)
+        logits_per_image, logits_per_text = self.model(text, image)
 
         # logits_per_text: (batch_size, batch_size)
         # The diagonal elements are the logits for the image being the same as the text

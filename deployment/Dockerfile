@@ -19,6 +19,8 @@ RUN pip install lightning \
     tenacity \ 
     pandas \
     datasets \
-    transformers
+    transformers \
+    "ray[default]" \
+    tabulate
 
 COPY . .
