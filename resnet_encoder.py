@@ -1,10 +1,13 @@
-import torch.nn as nn
-import torch 
 from typing import Optional, Union
 
+import torch
+import torch.nn as nn
+
+
 class StandardResidualBlock(nn.Module):
-    """Describes the residual block used in the shallower resnet architectures from the original paper. The 
+    """Describes the residual block used in the shallower resnet architectures from the original paper. The
     alternative is to use the Bottleneck block, which we implement below. Source: https://arxiv.org/abs/1512.03385."""
+
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int, padding: int, bias: bool):
         super().__init__()
         self.in_channels = in_channels
@@ -16,12 +19,12 @@ class StandardResidualBlock(nn.Module):
 
         self.block = nn.Sequential(
             nn.Conv2d(
-                in_channels=self.in_channels, 
-                out_channels=self.out_channels, 
-                kernel_size=self.kernel_size, 
-                stride=self.stride, 
-                padding=self.padding, 
-                bias=self.bias
+                in_channels=self.in_channels,
+                out_channels=self.out_channels,
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                padding=self.padding,
+                bias=self.bias,
             ),
             nn.BatchNorm2d(self.out_channels),
             nn.ReLU(),
@@ -31,7 +34,7 @@ class StandardResidualBlock(nn.Module):
                 kernel_size=self.kernel_size,
                 stride=self.stride,
                 padding=self.padding,
-                bias=self.bias
+                bias=self.bias,
             ),
         )
 
@@ -40,7 +43,7 @@ class StandardResidualBlock(nn.Module):
 
 
 class ResidualBottleneckBlock(nn.Module):
-    """Describes the bottleneck block used in the deeper resnet architectures from the original paper. """
+    """Describes the bottleneck block used in the deeper resnet architectures from the original paper."""
 
     EXPANSION: int = 4
 
@@ -55,12 +58,7 @@ class ResidualBottleneckBlock(nn.Module):
 
         self.block = nn.Sequential(
             nn.Conv2d(
-                in_channels=self.in_channels, 
-                out_channels=self.out_channels, 
-                kernel_size=1, 
-                stride=1, 
-                padding=0, 
-                bias=self.bias
+                in_channels=self.in_channels, out_channels=self.out_channels, kernel_size=1, stride=1, padding=0, bias=self.bias
             ),
             nn.BatchNorm2d(self.out_channels),
             nn.ReLU(),
@@ -70,7 +68,7 @@ class ResidualBottleneckBlock(nn.Module):
                 kernel_size=self.kernel_size,
                 stride=self.stride,
                 padding=self.padding,
-                bias=self.bias
+                bias=self.bias,
             ),
             nn.BatchNorm2d(self.out_channels),
             nn.ReLU(),
@@ -80,7 +78,7 @@ class ResidualBottleneckBlock(nn.Module):
                 kernel_size=1,
                 stride=1,
                 padding=0,
-                bias=self.bias
+                bias=self.bias,
             ),
             nn.BatchNorm2d(self.out_channels * ResidualBottleneckBlock.EXPANSION),
             nn.ReLU(),
@@ -94,17 +92,17 @@ class ResidualBottleneckBlock(nn.Module):
 
 class ResNetX(nn.Module):
     def __init__(
-            self, 
-            n_blocks: int, 
-            in_channels: int, 
-            out_channels: int, 
-            embedding_dim: int, 
-            kernel_size=3, 
-            stride=1, 
-            padding=1, 
-            bias=False,
-            block: Optional[Union[ResidualBottleneckBlock, StandardResidualBlock]] = None,
-        ):
+        self,
+        n_blocks: int,
+        in_channels: int,
+        out_channels: int,
+        embedding_dim: int,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        bias=False,
+        block: Optional[Union[ResidualBottleneckBlock, StandardResidualBlock]] = None,
+    ):
         super().__init__()
         self.n_blocks = n_blocks
         self.in_channels = in_channels
@@ -123,7 +121,7 @@ class ResNetX(nn.Module):
             nn.Conv2d(in_channels, self.in_channels, kernel_size=7, stride=2, padding=3, bias=False),
             nn.BatchNorm2d(self.in_channels),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),   
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
 
         self.layer_block = nn.Sequential(
@@ -148,7 +146,6 @@ class ResNetX(nn.Module):
             in_channels = out_channels * self.block.EXPANSION if self.block == ResidualBottleneckBlock else out_channels
 
         return nn.Sequential(*layers)
-        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.input_block(x)
@@ -158,10 +155,10 @@ class ResNetX(nn.Module):
         return x
 
     def _init_weights(self):
-        # defines typical weight initialization for resnet 
+        # defines typical weight initialization for resnet
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 

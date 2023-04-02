@@ -1,7 +1,8 @@
-from torchvision.transforms import ToTensor, Resize, Compose
+import torch
 from torch.utils.data import Dataset
+from torchvision.transforms import Compose, Resize, ToTensor
 from transformers import AutoTokenizer
-import torch 
+
 
 class PokemonClipDataset(Dataset):
     def __init__(self, dataset, context_length: int, image_transform=None, tokenizer=None):
@@ -11,11 +12,13 @@ class PokemonClipDataset(Dataset):
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") if tokenizer is None else tokenizer
 
     def __getitem__(self, idx):
-        image, text = self.dataset[idx]['image'], self.dataset[idx]['text']
+        image, text = self.dataset[idx]["image"], self.dataset[idx]["text"]
         if self.image_transform is not None:
             image = self.image_transform(image)
 
-        text = self.tokenizer.encode(text, add_special_tokens=True, max_length=self.context_length, truncation=True, padding="max_length")
+        text = self.tokenizer.encode(
+            text, add_special_tokens=True, max_length=self.context_length, truncation=True, padding="max_length"
+        )
         text = torch.tensor(text, dtype=torch.long)
         return image, text
 

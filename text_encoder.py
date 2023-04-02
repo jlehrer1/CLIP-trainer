@@ -1,6 +1,7 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch 
+
 
 class EncoderLayer(nn.Module):
     def __init__(self, embedding_dim, num_heads, feed_forward_dim, dropout):
@@ -23,9 +24,7 @@ class EncoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(self.embedding_dim)
         self.norm2 = nn.LayerNorm(self.embedding_dim)
         self.feed_forward = nn.Sequential(
-            nn.Linear(self.embedding_dim, self.feed_forward_dim),
-            nn.ReLU(),
-            nn.Linear(self.feed_forward_dim, self.embedding_dim)
+            nn.Linear(self.embedding_dim, self.feed_forward_dim), nn.ReLU(), nn.Linear(self.feed_forward_dim, self.embedding_dim)
         )
         self.dropout = nn.Dropout(self.dropout)
 
@@ -41,7 +40,7 @@ class EncoderLayer(nn.Module):
         x = x + self.feed_forward(x)
 
         return x
-    
+
 
 class TextEncoder(nn.Module):
     def __init__(self, num_heads, num_layers, max_len, vocab_size, embedding_dim, feed_forward_dim, dropout):
@@ -56,14 +55,19 @@ class TextEncoder(nn.Module):
 
         self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
         self.pos_embedding = nn.Embedding(self.max_len, self.embedding_dim)
-        self.layers = nn.ModuleList([EncoderLayer(self.embedding_dim, self.num_heads, self.feed_forward_dim, self.dropout) for _ in range(self.num_layers)])
+        self.layers = nn.ModuleList(
+            [
+                EncoderLayer(self.embedding_dim, self.num_heads, self.feed_forward_dim, self.dropout)
+                for _ in range(self.num_layers)
+            ]
+        )
         self.dropout = nn.Dropout(self.dropout)
 
     def forward(self, x):
         """
         Forward pass for the text encoder
         """
-        x = self.embedding(x) * (self.embedding_dim ** 0.5)
+        x = self.embedding(x) * (self.embedding_dim**0.5)
         x += self.pos_embedding(torch.arange(x.shape[1]).to(x.device))
         x = self.dropout(x)
         for layer in self.layers:
@@ -76,7 +80,7 @@ class TextEncoder(nn.Module):
         # we do this by taking the mean of the max_len dimension
         x = torch.mean(x, dim=1)
         return x
-    
+
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):

@@ -1,4 +1,4 @@
-CONTAINER = jmlehrer/sims
+CONTAINER = jmlehrer/clip
 
 .PHONY: build exec push run go train release 
 exec:

@@ -1,13 +1,16 @@
-from lightning_module import CLIP
-from pairdataset import PokemonClipDataset
+import argparse
+import os
+
 import pytorch_lightning as pl
-import torch 
+import torch
 from datasets import load_dataset
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader, random_split
 from transformers import AutoTokenizer
-import os
-import argparse 
+
+from lightning_module import CLIP
+from pairdataset import PokemonClipDataset
+
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 if __name__ == "__main__":
@@ -60,4 +63,3 @@ if __name__ == "__main__":
     )
 
     trainer.fit(model, traindata, valdata)
-
