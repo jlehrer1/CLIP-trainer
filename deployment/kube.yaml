@@ -12,7 +12,7 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-      - name: gpt-model
+      - name: clip
         image: jmlehrer/clip
         command: ["stdbuf", "-i0", "-o0", "-e0", "bash", "-c"]
         env:
@@ -26,11 +26,11 @@ spec:
           limits:
             memory: 256Gi
             cpu: "32"
-            nvidia.com/gpu: "${NGPU}"
+            nvidia.com/gpu: 1
           requests:
             memory: 256Gi
             cpu: "32"
-            nvidia.com/gpu: "${NGPU}"
+            nvidia.com/gpu: 1
         volumeMounts:
         - name: ephemeral
           mountPath: "/data"
