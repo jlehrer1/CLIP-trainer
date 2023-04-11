@@ -20,7 +20,7 @@ spec:
           value: "1"
         args: [
           "wandb login --relogin $(cat wandbcreds) && 
-          torch main.py"
+          python main.py --embedding_dim=1024 --max_len=512"
         ]
         resources:
           limits:

@@ -61,7 +61,6 @@ class CLIPModel(nn.Module):
 
         image_features = image / image.norm(dim=-1, keepdim=True)
         text_features = text / text.norm(dim=-1, keepdim=True)
-
         # this serves as a temperature parameter
         logit_scale = self.logit_scale.exp()
         # we calculate the logits by taking the dot product between the image and text features
@@ -118,13 +117,27 @@ class CLIP(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        loss = self.__step(batch)
+        images, texts = batch["images"], batch["texts"]
+        if isinstance(images, list):
+            images = torch.stack(images)
+
+        if isinstance(texts, list):
+            texts = torch.stack(texts)
+
+        loss = self.__step((images, texts))
         self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self.__step(batch)
+        images, texts = batch["images"], batch["texts"]
+        if isinstance(images, list):
+            images = torch.stack(images)
+
+        if isinstance(texts, list):
+            texts = torch.stack(texts)
+
+        loss = self.__step((images, texts))
         self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 

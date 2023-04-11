@@ -12,7 +12,7 @@ RUN sudo apt-get --allow-releaseinfo-change update && \
     sudo \
     vim
 
-RUN pip install lightning \
+RUN pip install -U lightning \
     wandb \
     sklearn \
     boto3 \ 

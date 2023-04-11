@@ -17,17 +17,27 @@ from torch.utils.data import random_split
 import ray.data
 import ray.train.torch
 from torch.utils.data import DataLoader
+from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.air import RunConfig
+from ray.air.integrations.wandb import setup_wandb
+from torchvision.models import resnet50
+
+model = resnet50()
+model.fc = nn.Linear(model.fc.in_features, embedding_dim)
 
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
-def calculate_loss(batch: tuple[torch.Tensor, torch.Tensor], model: nn.Module, text_criterion: nn.Module, image_criterion: nn.Module):
+
+def calculate_loss(
+    batch: tuple[torch.Tensor, torch.Tensor], model: nn.Module, text_criterion: nn.Module, image_criterion: nn.Module
+):
     image, text = batch
     image_logits, text_logits = model(text, image)
     text_loss = text_criterion(text_logits, torch.arange(text_logits.shape[0]).to(text_logits.device))
     image_loss = image_criterion(image_logits, torch.arange(image_logits.shape[0]).to(image_logits.device))
     loss = (text_loss + image_loss) / 2
 
-    wandb.log({"text_loss": text_loss, "image_loss": image_loss, "loss": loss})
+    # wandb.log({"text_loss": text_loss, "image_loss": image_loss, "loss": loss})
     return loss
 
 
@@ -72,9 +82,10 @@ def training_loop(config):
     epochs = config["epochs"]
     model_params = config["model_params"]
     train, val = config["train"], config["val"]
+    setup_wandb()
 
     batch_size_per_workers = max(1, batch_size // session.get_world_size())
-    
+
     train_dataset = DataLoader(
         dataset=train,
         batch_size=batch_size_per_workers,
@@ -87,9 +98,6 @@ def training_loop(config):
     )
     train_dataset = ray.train.torch.prepare_data_loader(train_dataset)
     train_dataset = ray.train.torch.prepare_data_loader(train_dataset)
-
-    print('Train dataset is of type: ', type(train_dataset))
-    print('Val dataset is of type: ', type(val_dataset))
 
     model = CLIPModel(
         num_heads=model_params["num_heads"],
@@ -133,9 +141,9 @@ def main():
     parser.add_argument("--feed_forward_dim", type=int, default=16, help="Feed forward dimension of the text")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate for training")
-    parser.add_argument("--num_workers", type=int, default=os.cpu_count(), help="Number of workers for dataloader")
+    parser.add_argument("--num_workers", type=int, default=1, help="Number of workers for dataloader")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs to train for")
     args = parser.parse_args()
     vocab_size = tokenizer.vocab_size
@@ -167,8 +175,15 @@ def main():
         "train": train,
         "val": val,
     }
-    trainer = TorchTrainer(train_loop_per_worker=training_loop, train_loop_config=config, scaling_config=ScalingConfig(num_workers=2))
+    wandb_callback = WandbLoggerCallback(project="clip-pokemon")
+    trainer = TorchTrainer(
+        train_loop_per_worker=training_loop,
+        train_loop_config=config,
+        scaling_config=ScalingConfig(num_workers=args.num_workers),
+        run_config=RunConfig(callbacks=[wandb_callback]),
+    )
     trainer.fit()
+
 
 if __name__ == "__main__":
     main()
