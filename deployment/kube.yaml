@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: clip-model
+  name: clip-model-4gpu
 spec:
   backoffLimit: 5
   completions: 1
@@ -20,17 +20,17 @@ spec:
           value: "1"
         args: [
           "wandb login --relogin $(cat wandbcreds) && 
-          python main.py --embedding_dim=1024 --max_len=512"
+          sleep 10000"
         ]
         resources:
           limits:
             memory: 256Gi
             cpu: "32"
-            nvidia.com/gpu: 1
+            nvidia.com/gpu: 4
           requests:
             memory: 256Gi
             cpu: "32"
-            nvidia.com/gpu: 1
+            nvidia.com/gpu: 4
         volumeMounts:
         - name: ephemeral
           mountPath: "/data"
