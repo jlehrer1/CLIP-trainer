@@ -79,6 +79,7 @@ def fetch_images(batch, num_threads, timeout=None, retries=0):
         batch["image"] = list(executor.map(fetch_single_image_with_args, batch["url"]))
     return batch
 
+
 class S3ModelCheckpointer(pl.Callback):
     def __init__(self, s3_client: boto3.client, bucket: str, prefix: str, n_epochs: int = 1, n_steps: int = 1000):
         """

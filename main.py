@@ -5,14 +5,9 @@ import pytorch_lightning as pl
 import torch
 from datasets import load_dataset
 from pytorch_lightning.loggers import WandbLogger
-from typing import Any
-from model_definition import CLIP
+from modeling.model_definition import CLIP
 from torchvision.transforms import Compose, Resize, ToTensor
-
-from datasets import load_dataset
-from datasets.utils.file_utils import get_datasets_user_agent
-
-from utils import generate_image_text_pair, tokenizer, fetch_images, S3ModelCheckpointer
+from modeling.utils import generate_image_text_pair, tokenizer, fetch_images, S3ModelCheckpointer
 
 if __name__ == "__main__":
     # take in command line arguments for hyperparameters

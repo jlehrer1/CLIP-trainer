@@ -10,8 +10,6 @@ from ray.air import session
 from ray.train.torch import TorchTrainer
 from transformers import AutoTokenizer
 from ray.air import ScalingConfig
-import wandb
-from lightning_module import CLIPModel
 from pairdataset import PokemonClipDataset
 from torch.utils.data import random_split
 import ray.data
