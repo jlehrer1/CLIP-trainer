@@ -5,6 +5,7 @@ import random
 import pathlib 
 import openai
 import re
+from ast import literal_eval
 
 def my_image_search_function(folder_path, query):
     # get absolute path to folder_path/ folder given that the folder_path is relative to where the app is running
@@ -18,35 +19,53 @@ def use_llm_to_clipify_user_query(query):
     openai.api_key = api_key
     model_engine = "davinci-003"
     prompt = """
-    I am going to give you a query from a user. I want you to extract the relevant keywords and discard anything else, since I am going to be using the output of your query directly with a text encoder. Respond with only the words to query for and nothing else. Here are some example to help you:
+    I am going to give you an image query from a user. I want you to extract the relevant keywords and discard anything else. You will respond in a dictionary format with {query_1: <your response>, query_2: <your response> ...}. It is your job to infer how many queries the user wants. If the user asks for multiple things, these are multiple queries. 
+
+    It is extremely important to get this correct. Respond with only the formatted query and nothing else. Here are some example to help you:
+
+    Make sure to infer and format the type of media the user wants. For example, if the user asks for "apple airpods" you should infer {query 1: picture of apple airpods}.
 
     Example 1:
     User: Show me images that have oak trees in the sun
-    Response: pictures of oak trees sun
+    Response: {query 1: pictures of oak trees sun}
 
     Example 2:
     User: Which images contain paintings of oranges?
-    Response: painting of oranges
+    Response: {query 1: painting of oranges}
 
     Example 3:
-    User: Mustang racing a ferrari. Also I like cats lalalala and my favorite color is blue.
-    Response: picture of a mustang racing a ferrari 
+    User: Which images have red or blue muscle cars?
+    Response: {query 1: picture of red muscle car, query 2: picture of blue muscle car}
 
-    Those are the examples. Now reply to this user query:
+    Example 4:
+    User: Show me apple airpods pros or airpod maxs
+    Response: {query 1: picture of apple airpod pro, query 2: picture of apple airpod max}
+
+    Please respond to this query:
     """
     prompt = re.sub(r'[^\w\s]', '', query)
-    # Remove excess whitespace
     prompt = re.sub(r'\s+', ' ', query).strip()
 
+    query = re.sub(r'[^\w\s]', '', query)
+    query = re.sub(r'\s+', ' ', query).strip()
+
+    prompt = prompt + "\n" + query
     response = openai.Completion.create(
         engine=model_engine,
         prompt=prompt,
-        max_tokens=1024,
+        max_tokens=64,
         n=1,
         stop=None,
         temperature=0.7,
     )
-    return response.choices[0].text
+    response = response.choices[0].text
+    try:
+        response = literal_eval(response)
+    except ValueError:
+        raise RuntimeError(f"Model returned incorrectly formatted response: {response}")
+        
+    return response
+
 
 app = Flask(__name__)
 
