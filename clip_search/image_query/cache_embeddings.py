@@ -9,14 +9,18 @@ import pickle
 import openai
 import re
 from ast import literal_eval
-
+from transformers import CLIPImageProcessor
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms as T
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 class ImageFolderDataset(Dataset):
-    def __init__(self, folder_path):
+    def __init__(self, folder_path: str):
         self.folder_path = folder_path
         self.image_paths = sorted(os.listdir(folder_path))
+        self.image_preprocesser = CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
     def __len__(self):
         return len(self.image_paths)
@@ -24,9 +28,11 @@ class ImageFolderDataset(Dataset):
     def __getitem__(self, idx):
         image_path = os.path.join(self.folder_path, self.image_paths[idx])
         image = Image.open(image_path).convert("RGB")
+        image = self.image_preprocesser(images=image, return_tensors="pt")
+        image["pixel_values"] = image["pixel_values"].squeeze(0)
         return image, self.image_paths[idx]
 
-def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_model: torch.nn.Module, batch_size: int = 128, n_embedding_per_file: int = 100, filenames_txt: str = "filenames.txt"):
+def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_model: torch.nn.Module, batch_size: int = 16, n_embedding_per_file: int = 128, filenames_txt: str = "filenames.txt"):
     """
     Encodes all images in a folder using CLIP and saves the embeddings to .npy files.
 
@@ -36,6 +42,8 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
     :param n_embedding_per_file: The number of embeddings to save per .npy file.
     :param filenames_txt: The name of the .txt file to save the filenames to.
     """
+    assert batch_size < n_embedding_per_file, "batch_size must be smaller than n_embedding_per_file"
+    assert n_embedding_per_file % batch_size == 0, "n_embedding_per_file must be a multiple of batch_size"
     os.makedirs(embeddings_folder, exist_ok=True)
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,33 +52,41 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
     # Create dataloader
     dataset = ImageFolderDataset(images_folder)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+
+    # Get embeddings shape
+    sample = dataset[0][0]
+    sample["pixel_values"] = sample["pixel_values"].unsqueeze(0)
+    embeddings_shape = clip_model.get_image_features(**sample).shape[1]
     # Loop over images in batches and save embeddings and filenames to .npy files
+    embeddings_batch = np.empty((0, embeddings_shape))
+    filenames_batch = []
+    file_index = 0
     with torch.no_grad():
-        embeddings_batch = []
-        filenames_batch = []
         for i, (batch, filenames) in enumerate(dataloader):
+            # check if numpy file exists, if so we continue to the next iter 
+            if os.path.exists(os.path.join(embeddings_folder, f"{file_index}.npy")):
+                file_index += 1
+                continue
+
             batch = batch.to(device)
-            embeddings = clip_model(batch).cpu().numpy()
-            embeddings_batch.append(embeddings)
-            filenames_batch.append(filenames)
+            embeddings = clip_model.get_image_features(**batch).cpu().numpy()
+            embeddings_batch = np.concatenate((embeddings_batch, embeddings), axis=0)
+            filenames_batch.extend(filenames)
             if len(embeddings_batch) == n_embedding_per_file:
-                embeddings_batch = np.concatenate(embeddings_batch, axis=0)
-                filenames_batch = np.concatenate(filenames_batch, axis=0)
-                embeddings_file_name = os.path.join(embeddings_folder, f"{i}.npy")
-                np.save(embeddings_file_name, embeddings_batch)
-                print(f"Saved embeddings for batch {i}")
-                embeddings_batch = []
+                embeddings_file_name = os.path.join(embeddings_folder, f"{file_index}.npy")
+                np.save(embeddings_file_name, embeddings_batch.astype(np.float32))
+                print(f"Saved embeddings up to batch {i}, continuing...")
                 with open(os.path.join(embeddings_folder, filenames_txt), "a") as f:
                     for filenames in filenames_batch:
                         f.write(filenames + "\n")
                 filenames_batch = []
-        # Save last batch
+                embeddings_batch = np.empty((0, embeddings_shape))
+                file_index += 1
+        # Save last .npy file of embeddings
         if len(embeddings_batch) > 0:
-            embeddings_batch = np.concatenate(embeddings_batch, axis=0)
-            filenames_batch = np.concatenate(filenames_batch, axis=0)
-            embeddings_file_name = os.path.join(embeddings_folder, f"{i+1}.npy")
-            np.save(embeddings_file_name, embeddings_batch)
-            print(f"Saved embeddings for batch {i+1}")
+            embeddings_file_name = os.path.join(embeddings_folder, f"{file_index + 1}.npy")
+            np.save(embeddings_file_name, embeddings_batch.astype(np.float32))
+            print(f"Saved embeddings for final batches")
             with open(os.path.join(embeddings_folder, filenames_txt), "a") as f:
                 for filenames in filenames_batch:
                     f.write(filenames + "\n")
@@ -83,20 +99,26 @@ def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nli
     :param query_vector: The query vector.
     :param nlist: The number of cells to use for the IVF index.
     :param K: The number of nearest neighbors to return.
-    :param index_file_name: The name of the pickled index file.
+    :param index_file_name: The name of the pickled index file in embeddings_folder.
     :param filenames_file: The name of the .txt file containing the filenames. Defaults to "filenames.txt".
 
     :return: A list of the filenames of the images with the nearest embeddings to the query vector.
     """
+
     # Set embedding size based on first file in folder
     for file_name in os.listdir(embeddings_folder):
         if file_name.endswith(".npy"):
-            embedding_size = np.load(os.path.join(embeddings_folder, file_name)).shape[1]
+            batch_size, embedding_size = np.load(os.path.join(embeddings_folder, file_name), allow_pickle=True).shape
+            print(f"Embedding size: {embedding_size}")
+            print(f"Batch size: {batch_size}")
             break
     else:
         raise ValueError("No .npy files found in the embeddings folder.")
 
+    # assert batch_size < nlist, "batch_size must be less than the number of cells in the IVF index"
     # Check if pickled index exists
+    index_file_name = os.path.join(embeddings_folder, index_file_name)
+    filenames_file = os.path.join(embeddings_folder, filenames_file)
     if os.path.exists(index_file_name):
         # Load pickled index
         with open(index_file_name, "rb") as f:
@@ -105,8 +127,9 @@ def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nli
         # Create new index
         coarse_quantizer = faiss.IndexFlatIP(embedding_size)
         index = faiss.IndexIVFFlat(coarse_quantizer, embedding_size, nlist, faiss.METRIC_INNER_PRODUCT)
-        for file_name in os.listdir(embeddings_folder):
-            embedding = np.load(os.path.join(embeddings_folder, file_name))
+        embedding_files = [f for f in os.listdir(embeddings_folder) if f.endswith(".npy")]
+        for file_name in embedding_files:
+            embedding = np.load(os.path.join(embeddings_folder, file_name), allow_pickle=True).astype(np.float32)
             # L2 normalization of embedding vectors since we are using cosine similarity
             embedding /= np.linalg.norm(embedding, axis=1)[:, np.newaxis]
             index.train(embedding)
@@ -115,7 +138,9 @@ def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nli
         with open(index_file_name, "wb") as f:
             pickle.dump(index, f)
     # Search for nearest neighbors
-    _, indices = index.search(np.array([query_vector]), K)
+    query_vector = query_vector.astype(np.float32)
+    print(f"Query vector shape: {query_vector.shape}")
+    _, indices = index.search(query_vector, K)
     # Read filenames from file
     with open(filenames_file, "r") as f:
         filenames = [line.strip() for line in f.readlines()]
@@ -164,15 +189,13 @@ def get_text_encoding_from_response(query: str, tokenizer: nn.Module, clip_model
         temperature=0.5,
     )
     response = response.choices[0].message.content
+    # Yes I know this is bad but it's only running locally so if you prompt inject 
+    # some stuff and break your computer 
+    # with malicious python code it's kinda your fault
     try:
         response = literal_eval(response)
     except:
         raise ValueError(f"Model returned an invalid response {response}. Please try again.")
-    # Yes I know this is bad but it's only running locally so if you break your computer 
-    # with malicious python code it's kinda your fault
-    # TODO: support multiple queries 
-    # assert len(response) == 1, f"Model returned {len(response)} queries, but we only support 1 query at the moment."
     encoded_text = tokenizer.encode(response, return_tensors="pt")
     encoded_text = clip_model.get_text_features(encoded_text)
-    print(f"Encoded text: {encoded_text}")
-    return encoded_text
+    return encoded_text.detach().cpu().numpy()
