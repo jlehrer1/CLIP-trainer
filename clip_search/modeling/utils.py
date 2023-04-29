@@ -1,16 +1,17 @@
-import torch
-from transformers import AutoTokenizer
-from typing import Any
-from torchvision.transforms import Compose
+import io
+import os
+import urllib
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-import io
-import urllib
-import pytorch_lightning as pl
-import PIL.Image
-import os 
+from typing import Any
+
 import boto3
+import PIL.Image
+import pytorch_lightning as pl
+import torch
 from datasets.utils.file_utils import get_datasets_user_agent
+from torchvision.transforms import Compose
+from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 USER_AGENT = get_datasets_user_agent()
@@ -110,7 +111,7 @@ class S3ModelCheckpointer(pl.Callback):
     def _save_checkpoint(self, trainer: pl.Trainer, epoch: int, step: int) -> None:
         trainer.save_checkpoint(f"checkpoint-{trainer.current_epoch}-{trainer.global_step}.ckpt")
         self.s3_client.upload_file(
-            f"checkpoint-{trainer.global_step}.ckpt", 
-            self.bucket, 
-            os.path.join(self.prefix, f"checkpoint-{trainer.current_epoch}-{trainer.global_step}.ckpt")
+            f"checkpoint-{trainer.global_step}.ckpt",
+            self.bucket,
+            os.path.join(self.prefix, f"checkpoint-{trainer.current_epoch}-{trainer.global_step}.ckpt"),
         )

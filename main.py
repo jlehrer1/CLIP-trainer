@@ -1,13 +1,20 @@
 import argparse
 import os
+
 import boto3
 import pytorch_lightning as pl
 import torch
 from datasets import load_dataset
 from pytorch_lightning.loggers import WandbLogger
-from modeling.model_definition import CLIP
 from torchvision.transforms import Compose, Resize, ToTensor
-from modeling.utils import generate_image_text_pair, tokenizer, fetch_images, S3ModelCheckpointer
+
+from clip_search.modeling.model_definition import CLIP
+from clip_search.modeling.utils import (
+    S3ModelCheckpointer,
+    fetch_images,
+    generate_image_text_pair,
+    tokenizer,
+)
 
 if __name__ == "__main__":
     # take in command line arguments for hyperparameters
@@ -79,7 +86,12 @@ if __name__ == "__main__":
 
     with open("credentials", "r") as f:
         credentials = f.read().splitlines()
-    s3_client = boto3.client("s3", aws_access_key_id=credentials[0], aws_secret_access_key=credentials[1], endpoint_url="https://s3-west.nrp-nautilus.io/")
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=credentials[0],
+        aws_secret_access_key=credentials[1],
+        endpoint_url="https://s3-west.nrp-nautilus.io/",
+    )
     s3_model_checkpointer = S3ModelCheckpointer(
         s3_client=s3_client,
         bucket="braingeneersdev",
@@ -93,7 +105,7 @@ if __name__ == "__main__":
         devices=1,
         max_epochs=args.epochs,
         logger=wandb_logger,
-        callbacks=[s3_model_checkpointer]
+        callbacks=[s3_model_checkpointer],
     )
 
     model = CLIP(

@@ -1,13 +1,32 @@
+import requests
 import torch
+from PIL import Image
 from torch.utils.data import Dataset, IterableDataset
 from torchvision.transforms import Compose, Resize, ToTensor
 from transformers import AutoTokenizer
-import requests
-from PIL import Image
 
 
 class BaseClipDataset(Dataset):
+    """
+    Dataset for generating text, image pairs for CLIP.
+
+    :ivar dataset: The base huggingface dataset to generate pairs from.
+    :ivar context_length: The maximum length of the text.
+    :ivar image_transform: The transform to apply to the images.
+    :ivar tokenizer: The tokenizer to use for the text.
+    :ivar image_key: The key to use for the image in the dataset
+    :ivar text_key: The key to use for the text in the dataset
+    """
     def __init__(self, dataset, context_length: int, image_transform=None, tokenizer=None, image_key="image", text_key="text"):
+        """
+        Dataset for generating text, image pairs for CLIP.
+        :param dataset: The base huggingface dataset to generate pairs from.
+        :param context_length: The maximum length of the text.
+        :param image_transform: The transform to apply to the images.
+        :param tokenizer: The tokenizer to use for the text.
+        :param image_key: The key to use for the image in the dataset
+        :param text_key: The key to use for the text in the dataset
+        """
         self.dataset = dataset
         self.context_length = context_length
         self.image_transform = Compose([Resize((224, 224)), ToTensor()]) if image_transform is None else image_transform

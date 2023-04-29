@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50
 
-from modeling.resnet_encoder import ResNetX
-from modeling.text_encoder import TextEncoder
+from clip_search.modeling.resnet_encoder import ResNetX
+from clip_search.modeling.text_encoder import TextEncoder
 
 
 class CLIPModel(nn.Module):

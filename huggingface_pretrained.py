@@ -1,10 +1,11 @@
+import os
+
 from PIL import Image
-import os 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 import requests
-
-from transformers import CLIPProcessor, CLIPModel
+from transformers import CLIPModel, CLIPProcessor
 
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 

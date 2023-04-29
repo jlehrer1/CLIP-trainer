@@ -1,20 +1,20 @@
-import os 
-import torch 
-import torch.nn as nn
-from PIL import Image
-import numpy as np
 import os
-import faiss
 import pickle
-import openai
 import re
 from ast import literal_eval
-from transformers import CLIPImageProcessor
+
+import faiss
+import numpy as np
+import openai
+import torch
+import torch.nn as nn
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms as T
+from transformers import CLIPImageProcessor
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+
 
 class ImageFolderDataset(Dataset):
     def __init__(self, folder_path: str, image_preprocesser: CLIPImageProcessor):
@@ -32,7 +32,16 @@ class ImageFolderDataset(Dataset):
         image["pixel_values"] = image["pixel_values"].squeeze(0)
         return image, self.image_paths[idx]
 
-def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_model: torch.nn.Module, image_preprocessor: CLIPImageProcessor, batch_size: int = 16, n_embedding_per_file: int = 128, filenames_txt: str = "filenames.txt"):
+
+def encode_and_pickle_images(
+    embeddings_folder: str,
+    images_folder: str,
+    clip_model: torch.nn.Module,
+    image_preprocessor: CLIPImageProcessor,
+    batch_size: int = 16,
+    n_embedding_per_file: int = 128,
+    filenames_txt: str = "filenames.txt",
+):
     """
     Encodes all images in a folder using CLIP and saves the embeddings to .npy files.
 
@@ -45,7 +54,7 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
     assert batch_size < n_embedding_per_file, "batch_size must be smaller than n_embedding_per_file"
     assert n_embedding_per_file % batch_size == 0, "n_embedding_per_file must be a multiple of batch_size"
 
-    # check if the embedding folder exists, if so we dont embed 
+    # check if the embedding folder exists, if so we dont embed
     # TODO: This is a bad way to check lol
     if os.path.exists(embeddings_folder):
         return
@@ -69,7 +78,7 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
     file_index = 0
     with torch.no_grad():
         for i, (batch, filenames) in enumerate(dataloader):
-            # check if numpy file exists, if so we continue to the next iter 
+            # check if numpy file exists, if so we continue to the next iter
             if os.path.exists(os.path.join(embeddings_folder, f"{file_index}.npy")):
                 file_index += 1
                 continue
@@ -100,7 +109,10 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
                 for filenames in filenames_batch:
                     f.write(filenames + "\n")
 
-def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nlist: int, K: int, index_file_name: str, filenames_file = "filenames.txt"):
+
+def find_nearest_filenames(
+    embeddings_folder: str, query_vector: np.ndarray, nlist: int, K: int, index_file_name: str, filenames_file="filenames.txt"
+):
     """
     Uses FAISS to find the filenames of the images with the nearest embeddings to the query vector.
 
@@ -153,6 +165,7 @@ def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nli
     # Get filenames at indices
     return [filenames[i] for i in indices[0]]
 
+
 def get_text_encoding_from_response(query: str, tokenizer: nn.Module, clip_model: nn.Module) -> torch.Tensor:
     try:
         api_key = os.environ["OPENAI_API_KEY"]
@@ -195,8 +208,8 @@ def get_text_encoding_from_response(query: str, tokenizer: nn.Module, clip_model
         temperature=0.5,
     )
     response = response.choices[0].message.content
-    # Yes I know this is bad but it's only running locally so if you prompt inject 
-    # some stuff and break your computer 
+    # Yes I know this is bad but it's only running locally so if you prompt inject
+    # some stuff and break your computer
     # with malicious python code it's kinda your fault
     try:
         response = literal_eval(response)

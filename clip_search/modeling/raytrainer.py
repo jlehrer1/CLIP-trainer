@@ -1,24 +1,20 @@
 import argparse
 import os
 
+import ray.data
 import ray.train
+import ray.train.torch
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from datasets import load_dataset
-from ray.air import session
-from ray.train.torch import TorchTrainer
-from transformers import AutoTokenizer
-from ray.air import ScalingConfig
 from pairdataset import PokemonClipDataset
-from torch.utils.data import random_split
-import ray.data
-import ray.train.torch
-from torch.utils.data import DataLoader
-from ray.air.integrations.wandb import WandbLoggerCallback
-from ray.air import RunConfig
-from ray.air.integrations.wandb import setup_wandb
+from ray.air import RunConfig, ScalingConfig, session
+from ray.air.integrations.wandb import WandbLoggerCallback, setup_wandb
+from ray.train.torch import TorchTrainer
+from torch.utils.data import DataLoader, random_split
 from torchvision.models import resnet50
+from transformers import AutoTokenizer
 
 model = resnet50()
 model.fc = nn.Linear(model.fc.in_features, embedding_dim)
