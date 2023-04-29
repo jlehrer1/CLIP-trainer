@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Image Search</title>
+    <title>CLIP Embedding Search</title>
     <style>
         body {
             display: flex;
@@ -9,48 +9,83 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
+            background-color: #f0f8ff;
+            background-image: linear-gradient(to bottom right, #add8e6, #ffffff);
+            background-size: 400% 400%;
+            animation: gradientBG 10s ease infinite;
         }
-        
-        form {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+
+        @keyframes gradientBG {
+        0% {
+            background-position: 0% 50%;
         }
-        
-        label {
-            margin-bottom: 5px;
+        50% {
+            background-position: 100% 50%;
         }
-        
-        input[type="text"] {
-            width: 100%;
-            margin-bottom: 10px;
-            padding: 5px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
+        100% {
+            background-position: 0% 50%;
         }
-        
-        input[type="submit"] {
-            padding: 10px;
-            background-color: #4CAF50;
-            color: white;
-            border-radius: 5px;
-            border: none;
-            cursor: pointer;
-        }
-        
-        input[type="submit"]:hover {
-            background-color: #3e8e41;
-        }
-    </style>
+    }
+
+    h1 {
+        font-family: "Courier New", Courier, monospace;
+    }
+
+    form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    label {
+        margin-bottom: 5px;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 16px;
+    }
+
+    input[type="text"] {
+        width: 100%;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 16px;
+    }
+
+    input[type="submit"] {
+        padding: 10px;
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 16px;
+    }
+
+    input[type="submit"]:hover {
+        background-color: #3e8e41;
+    }
+
+    #folder_path {
+        width: 100%;
+    }
+</style>
+
 </head>
 <body>
-    <h1>Image Search</h1>
+    <h1>CLIP Embedding Search</h1>
     <form action="/" method="POST">
         <label for="query">Query:</label>
         <input type="text" id="query" name="query" placeholder="Enter your query...">
         <label for="folder_path">Folder Path:</label>
-        <input type="text" id="folder_path" name="folder_path" placeholder="Enter the folder path...">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <input type="text" id="folder_path" name="folder_path" placeholder="Folder path...">
+        </div>
         <input type="submit" value="Search">
     </form>
 </body>

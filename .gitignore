@@ -5,7 +5,11 @@ wandb/*
 credentials
 wandbcreds
 **/*/images/*
-clip_search/image_query/images/
+**/clip_search/image_query/images/*
 *.egg_info/*
 embeddings/*
 index.faiss
+images/*
+**/images/*
+**/clip_search/image_query/embeddings/*
+**/__pycache__/*

@@ -1,4 +1,6 @@
 from PIL import Image
+import os 
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 import requests
 

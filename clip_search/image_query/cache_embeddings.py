@@ -17,10 +17,10 @@ from torchvision import transforms as T
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 class ImageFolderDataset(Dataset):
-    def __init__(self, folder_path: str):
+    def __init__(self, folder_path: str, image_preprocesser: CLIPImageProcessor):
         self.folder_path = folder_path
         self.image_paths = sorted(os.listdir(folder_path))
-        self.image_preprocesser = CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        self.image_preprocesser = image_preprocesser
 
     def __len__(self):
         return len(self.image_paths)
@@ -32,7 +32,7 @@ class ImageFolderDataset(Dataset):
         image["pixel_values"] = image["pixel_values"].squeeze(0)
         return image, self.image_paths[idx]
 
-def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_model: torch.nn.Module, batch_size: int = 16, n_embedding_per_file: int = 128, filenames_txt: str = "filenames.txt"):
+def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_model: torch.nn.Module, image_preprocessor: CLIPImageProcessor, batch_size: int = 16, n_embedding_per_file: int = 128, filenames_txt: str = "filenames.txt"):
     """
     Encodes all images in a folder using CLIP and saves the embeddings to .npy files.
 
@@ -44,13 +44,19 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
     """
     assert batch_size < n_embedding_per_file, "batch_size must be smaller than n_embedding_per_file"
     assert n_embedding_per_file % batch_size == 0, "n_embedding_per_file must be a multiple of batch_size"
+
+    # check if the embedding folder exists, if so we dont embed 
+    # TODO: This is a bad way to check lol
+    if os.path.exists(embeddings_folder):
+        return
+
     os.makedirs(embeddings_folder, exist_ok=True)
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Set model to evaluation mode
     clip_model.eval()
     # Create dataloader
-    dataset = ImageFolderDataset(images_folder)
+    dataset = ImageFolderDataset(images_folder, image_preprocessor)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
 
     # Get embeddings shape
@@ -69,7 +75,10 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
                 continue
 
             batch = batch.to(device)
-            embeddings = clip_model.get_image_features(**batch).cpu().numpy()
+            embeddings = clip_model.get_image_features(**batch)
+            embeddings = embeddings / embeddings.norm(p=2, dim=-1, keepdim=True)
+            embeddings = embeddings.detach().cpu().numpy()
+
             embeddings_batch = np.concatenate((embeddings_batch, embeddings), axis=0)
             filenames_batch.extend(filenames)
             if len(embeddings_batch) == n_embedding_per_file:
@@ -84,7 +93,7 @@ def encode_and_pickle_images(embeddings_folder: str, images_folder: str, clip_mo
                 file_index += 1
         # Save last .npy file of embeddings
         if len(embeddings_batch) > 0:
-            embeddings_file_name = os.path.join(embeddings_folder, f"{file_index + 1}.npy")
+            embeddings_file_name = os.path.join(embeddings_folder, f"{file_index}.npy")
             np.save(embeddings_file_name, embeddings_batch.astype(np.float32))
             print(f"Saved embeddings for final batches")
             with open(os.path.join(embeddings_folder, filenames_txt), "a") as f:
@@ -108,9 +117,7 @@ def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nli
     # Set embedding size based on first file in folder
     for file_name in os.listdir(embeddings_folder):
         if file_name.endswith(".npy"):
-            batch_size, embedding_size = np.load(os.path.join(embeddings_folder, file_name), allow_pickle=True).shape
-            print(f"Embedding size: {embedding_size}")
-            print(f"Batch size: {batch_size}")
+            embedding_size = np.load(os.path.join(embeddings_folder, file_name), allow_pickle=True).shape[1]
             break
     else:
         raise ValueError("No .npy files found in the embeddings folder.")
@@ -125,22 +132,21 @@ def find_nearest_filenames(embeddings_folder: str, query_vector: np.ndarray, nli
             index = pickle.load(f)
     else:
         # Create new index
-        coarse_quantizer = faiss.IndexFlatIP(embedding_size)
+        coarse_quantizer = faiss.IndexFlatL2(embedding_size)
         index = faiss.IndexIVFFlat(coarse_quantizer, embedding_size, nlist, faiss.METRIC_INNER_PRODUCT)
-        embedding_files = [f for f in os.listdir(embeddings_folder) if f.endswith(".npy")]
+        embedding_files = [f"{i}.npy" for i in range(sum(1 for _ in os.listdir(embeddings_folder) if _.endswith(".npy")))]
         for file_name in embedding_files:
             embedding = np.load(os.path.join(embeddings_folder, file_name), allow_pickle=True).astype(np.float32)
-            # L2 normalization of embedding vectors since we are using cosine similarity
-            embedding /= np.linalg.norm(embedding, axis=1)[:, np.newaxis]
             index.train(embedding)
             index.add(embedding)
-        # Save index to disk
         with open(index_file_name, "wb") as f:
             pickle.dump(index, f)
     # Search for nearest neighbors
     query_vector = query_vector.astype(np.float32)
-    print(f"Query vector shape: {query_vector.shape}")
-    _, indices = index.search(query_vector, K)
+    print(query_vector.shape)
+
+    distances, indices = index.search(query_vector, K)
+    print(distances)
     # Read filenames from file
     with open(filenames_file, "r") as f:
         filenames = [line.strip() for line in f.readlines()]
@@ -196,6 +202,10 @@ def get_text_encoding_from_response(query: str, tokenizer: nn.Module, clip_model
         response = literal_eval(response)
     except:
         raise ValueError(f"Model returned an invalid response {response}. Please try again.")
-    encoded_text = tokenizer.encode(response, return_tensors="pt")
+    print(f"Response from llm model is {response}")
+    encoded_text = tokenizer(query, return_tensors="pt", padding=True)["input_ids"]
     encoded_text = clip_model.get_text_features(encoded_text)
-    return encoded_text.detach().cpu().numpy()
+    encoded_text = encoded_text / encoded_text.norm(p=2, dim=-1, keepdim=True)
+    encoded_text = encoded_text.detach().cpu().numpy()
+
+    return encoded_text
