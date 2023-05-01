@@ -13,3 +13,4 @@ images/*
 **/images/*
 **/clip_search/image_query/embeddings/*
 **/__pycache__/*
+clip_search.egg-info/*
